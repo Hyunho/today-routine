@@ -87,20 +87,22 @@ struct SyncCSVLink: Identifiable { var id: UUID; var name: String; var url: URL 
                     let sourceEvents = events.filter { $0.csvDocumentID == doc.documentID }
                     let normalized = try CSVCodec.encode(CSVCodec.decode(file.data))
                     let hash = SyncCoding.hash(normalized)
-                    if sourceEvents.contains(where:{$0.csvHash == hash}) { continue }
                     doc.state = try SyncReducer.reduce(sourceEvents,initial:doc.state)
                     doc.dates = Set(doc.dates).union(doc.state.objects.values.filter { $0.kind == .record && $0.fields["routineID"] == doc.routineID.uuidString }.compactMap { $0.fields["dayKey"] }).sorted()
                     let result = try CSVImporter.diff(data:file.data,baseline:doc,current:adapter.exportState())
                     let resolved = Set(events.flatMap { $0.resolvedConflicts ?? [] })
-                    let pendingConflicts = result.conflicts.filter { !resolved.contains($0.id) }
+                    func alreadyApplied(_ op: SyncOperation) -> Bool {
+                        let fields = Set(op.values.keys.filter { $0.hasPrefix("step/") || $0 == "status" })
+                        return !fields.isEmpty && fields.allSatisfy { field in
+                            sourceEvents.contains { event in event.csvHash == hash && event.operations.contains { $0.id == op.id && $0.values[field] != nil } }
+                        }
+                    }
+                    let pendingConflicts = result.conflicts.filter { !resolved.contains($0.id) && !alreadyApplied($0.operation) }
                     conflicts.append(contentsOf:pendingConflicts)
-                    if !result.operations.isEmpty {
-                        var event = try CSVImporter.event(result.operations,document:doc)
-                        event.id = SyncCoding.stableID(doc.documentID.uuidString+String(doc.state.counter)+hash)
-                        event.csvDocumentID = doc.documentID
-                        // A partially imported file is reconsidered until all conflicting cells are resolved.
-                        event.csvHash = pendingConflicts.isEmpty ? hash:nil
-                        try adapter.appendLocal(event); onChange?()
+                    // Each independently accepted cell has its own canonical identity. A peer's
+                    // conflict subset cannot change the bytes stored under another cell's ID.
+                    for event in try CSVImporter.cellEvents(result.operations,document:doc,hash:hash) {
+                        if !event.operations.allSatisfy(alreadyApplied) { try adapter.appendLocal(event); onChange?() }
                     }
                 } catch { warnings.append("\(file.document.name): \(error.localizedDescription)") }
             }

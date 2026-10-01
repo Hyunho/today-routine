@@ -42,7 +42,7 @@ struct SyncSettingsView: View {
                             preview = item.url
                             #endif
                         }
-                        Text(item.url.path).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text(item.url.path).accessibilityIdentifier("csv-path-"+item.id.uuidString).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }
             }

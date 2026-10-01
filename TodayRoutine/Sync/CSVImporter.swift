@@ -31,19 +31,31 @@ enum CSVImporter {
                 } else { values[field] = newValue }
             }
             if !values.isEmpty {
-                if current.objects[key] == nil {
-                    values["routineID"] = baseline.routineID.uuidString; values["dayKey"] = date; values["nameSnapshot"] = baseline.name
-                    let ids = baseline.columns.filter { $0.stepID != "_complete" }.map(\.stepID)
-                    values["stepIDs"] = ids.joined(separator:",")
-                    values["stepNames"] = String(data:try SyncCoding.encode(Dictionary(uniqueKeysWithValues:baseline.columns.map { ($0.stepID,$0.title) })),encoding:.utf8)
-                }
+                // Initialization must come only from the document, never the observing peer.
+                let record = baseline.state.objects[key]
+                values["routineID"] = baseline.routineID.uuidString; values["dayKey"] = date
+                values["nameSnapshot"] = record?.fields["nameSnapshot"] ?? baseline.name
+                let applicable = baseline.columns.filter { $0.stepID != "_complete" && baseline.value(date:date,stepID:$0.stepID,state:baseline.state) != nil }
+                values["stepIDs"] = applicable.map(\.stepID).sorted().joined(separator:",")
+                values["stepNames"] = try record?.fields["stepNames"] ?? String(data:SyncCoding.encode(Dictionary(uniqueKeysWithValues:applicable.map { ($0.stepID,$0.title) })),encoding:.utf8)
                 result.operations.append(SyncOperation(kind:.record,id:id,values:values))
             }
         }
         return result
     }
+    static func cellEvents(_ operations: [SyncOperation], document: RoutineCSVDocument, hash: String) throws -> [SyncEvent] {
+        try operations.flatMap { op in
+            try op.values.keys.filter { $0.hasPrefix("step/") || $0 == "status" }.sorted().map { field in
+                let values = op.values.filter { $0.key == field || (!$0.key.hasPrefix("step/") && $0.key != "status") }
+                var event = try self.event([SyncOperation(kind:.record,id:op.id,values:values)],document:document)
+                event.csvDocumentID = document.documentID; event.csvHash = hash
+                event.id = SyncCoding.stableID(event.id.uuidString+hash)
+                return event
+            }
+        }
+    }
     static func event(_ operations: [SyncOperation], document: RoutineCSVDocument) throws -> SyncEvent {
         let bytes = try SyncCoding.encode(operations)
-        return SyncEvent(spaceID:document.spaceID,id:SyncCoding.stableID(document.documentID.uuidString+SyncCoding.hash(bytes)),deviceID:document.documentID,counter:document.state.counter+1,createdAt:document.createdAt,operations:operations)
+        return SyncEvent(spaceID:document.spaceID,id:SyncCoding.stableID(document.documentID.uuidString+String(document.state.counter)+SyncCoding.hash(bytes)),deviceID:document.documentID,counter:document.state.counter+1,createdAt:document.createdAt,operations:operations)
     }
 }

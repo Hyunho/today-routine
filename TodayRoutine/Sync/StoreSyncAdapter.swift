@@ -42,6 +42,15 @@ import SwiftData
                 if let command = store.syncDayCommand, command.0 == object.id { values["command"] = command.1.rawValue }
                 else if values.keys.contains(where:{$0.hasPrefix("step/")}) { values.removeValue(forKey:"status") }
             }
+            let groups: [[String]]
+            switch object.kind {
+            case .block: groups = [["dayKey","startMinute","endMinute"],["linkedID","linkedKind"]]
+            case .routine: groups = [["repeatRaw","weekdays","weeklyTarget"]]
+            default: groups = []
+            }
+            for group in groups where group.contains(where:{values[$0] != nil}) {
+                for field in group { values[field] = object.fields[field] }
+            }
             if !values.isEmpty { ops.append(SyncOperation(kind:object.kind,id:object.id,values:values)) }
         }
         for old in before.values where after[old.key] == nil { ops.append(SyncOperation(kind:old.kind,id:old.id,deleted:true)) }
