@@ -1,5 +1,12 @@
 import Foundation
 enum RoutineRules {
+    static func refreshedSelection(_ selection: Date, previousToday: Date, now: Date) -> Date {
+        dayKey(selection) == dayKey(previousToday) ? now : selection
+    }
+    static func visible(_ routine: Routine, records: [RoutineDayRecord], on date: Date, now: Date) -> Bool {
+        if dayKey(date) < dayKey(now), records.contains(where: { $0.routineID == routine.id && $0.dayKey == dayKey(date) }) { return true }
+        return isScheduled(routine, on: date) || (routine.status == .active && routine.repeatKind == .weeklyGoal)
+    }
     static var calendar: Calendar { var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "Asia/Seoul")!; c.firstWeekday = 2; return c }
     static func dayKey(_ date: Date) -> String {
         let c = calendar.dateComponents([.year,.month,.day], from: date)

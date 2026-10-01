@@ -3,6 +3,17 @@ import SwiftData
 @testable import RoutineCore
 
 final class StoreTests: XCTestCase {
+    @MainActor func testSaveFailureRollsBackWithoutLosingDraft() throws {
+        let store = RoutineStore(container: try PersistenceFactory.make(inMemory: true))
+        var draft = RoutineDraft(); draft.name = "원래 이름"; try store.upsertRoutine(draft)
+        draft.name = "보존할 입력"
+        store.saveOperation = { _ in throw CocoaError(.fileWriteOutOfSpace) }
+        XCTAssertThrowsError(try store.upsertRoutine(draft))
+        XCTAssertEqual(try store.loadSnapshot().routines.first?.name, "원래 이름")
+        XCTAssertEqual(draft.name, "보존할 입력")
+        store.saveOperation = nil; try store.upsertRoutine(draft)
+        XCTAssertEqual(try store.loadSnapshot().routines.first?.name, "보존할 입력")
+    }
     @MainActor func testReopenPreservesAllModels() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -8,6 +8,7 @@ import SwiftData
 @MainActor @Observable final class AppModel {
     var store: RoutineStore?
     var snapshot = StoreSnapshot()
+    var presentedSheets = 0
     var error: String?
     var startupError: String?
     var revision = 0
@@ -21,7 +22,17 @@ import SwiftData
                 url = URL.applicationSupportDirectory.appendingPathComponent("UITest-\(id.uuidString).store")
             }
             #endif
-            store = RoutineStore(container: try PersistenceFactory.make(url: url)); startupError = nil; try reload()
+            store = RoutineStore(container: try PersistenceFactory.make(url: url))
+            #if DEBUG
+            if url != nil && ProcessInfo.processInfo.arguments.contains("--uitest-fail-save-once") {
+                var fail = true
+                store?.saveOperation = { context in
+                    if fail { fail = false; throw CocoaError(.fileWriteOutOfSpace) }
+                    try context.save()
+                }
+            }
+            #endif
+            startupError = nil; try reload()
         } catch { startupError = error.localizedDescription }
     }
     func reload() throws { if let store { snapshot = try store.loadSnapshot(); revision += 1 } }

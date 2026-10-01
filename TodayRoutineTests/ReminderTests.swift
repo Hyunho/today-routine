@@ -22,3 +22,40 @@ final class ReminderTests: XCTestCase {
         XCTAssertEqual(requests.first?.fireDate, ISO8601DateFormatter().date(from: "2026-10-03T01:00:00Z"))
     }
 }
+
+import UserNotifications
+@MainActor private final class FakeNotificationClient: NotificationClient {
+    var allowed: UNAuthorizationStatus = .denied
+    var ids = ["routine/obsolete", "other-feature/keep"]
+    var added: [ReminderRequest] = []
+    func requestPermission() async throws -> Bool { allowed == .authorized }
+    func authorization() async -> UNAuthorizationStatus { allowed }
+    func pendingIDs() async -> [String] { ids }
+    func remove(ids removed: [String]) { ids.removeAll { removed.contains($0) } }
+    func add(_ request: ReminderRequest) async throws { added.append(request); ids.append(request.id) }
+}
+extension ReminderTests {
+    @MainActor func testDeniedPermissionDoesNotPreventSaving() async throws {
+        let client = FakeNotificationClient()
+        let service = NotificationService(client: client)
+        let allowed = try await service.requestPermission(); XCTAssertFalse(allowed)
+        let store = RoutineStore(container: try PersistenceFactory.make(inMemory: true))
+        var draft = RoutineDraft(); draft.name = "거부해도 저장"; try store.upsertRoutine(draft)
+        let denied = NotificationService(client: client); denied.enqueue(snapshot: try store.loadSnapshot()); await denied.waitUntilIdle()
+        XCTAssertEqual(try store.loadSnapshot().routines.count, 1)
+        XCTAssertTrue(denied.status.contains("꺼져")); XCTAssertTrue(client.added.isEmpty)
+        XCTAssertEqual(client.ids, ["other-feature/keep"])
+    }
+    @MainActor func testAuthorizedRefreshSchedulesAndCancelsCompletedDay() async throws {
+        let client = FakeNotificationClient(); client.allowed = .authorized
+        let service = NotificationService(client: client)
+        let r = Routine(name: "알림"), pref = ReminderPreference(routineID: UUID(), enabled: true, minute: 1439)
+        pref.routineID = r.id
+        var snapshot = StoreSnapshot(); snapshot.routines = [r]; snapshot.reminders = [pref]
+        service.enqueue(snapshot: snapshot); await service.waitUntilIdle()
+        XCTAssertFalse(client.added.isEmpty); XCTAssertTrue(client.ids.contains("other-feature/keep"))
+        let record = RoutineDayRecord(routineID: r.id, dayKey: RoutineRules.dayKey(Date()), name: r.name); record.status = .completed; snapshot.records = [record]
+        service.enqueue(snapshot: snapshot); await service.waitUntilIdle()
+        XCTAssertFalse(client.ids.contains("routine/\(r.id.uuidString)/\(record.dayKey)"))
+    }
+}

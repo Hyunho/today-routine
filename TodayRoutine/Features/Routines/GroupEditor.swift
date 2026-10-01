@@ -13,6 +13,6 @@ struct GroupEditor: View {
             } } footer: { Text("그룹을 삭제해도 루틴과 기록은 유지됩니다.") }
         }.navigationTitle("그룹 관리").toolbar { ToolbarItem(placement: .confirmationAction) { Button("완료") { dismiss() } } }
         .confirmationDialog("그룹을 삭제하고 루틴 연결을 해제할까요?", isPresented: Binding(get: { deleteID != nil }, set: { if !$0 { deleteID = nil } })) { Button("그룹 삭제", role: .destructive) { if let id = deleteID { model.perform { try $0.deleteGroup(id: id) } }; deleteID = nil } }
-        }
+        }.modifier(SheetSaveErrors(model: model))
     }
 }

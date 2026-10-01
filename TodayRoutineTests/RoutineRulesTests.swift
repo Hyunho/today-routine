@@ -1,6 +1,20 @@
 import XCTest
 @testable import RoutineCore
 final class RoutineRulesTests: XCTestCase {
+    func testMidnightRefreshPreservesExplicitHistorySelection() {
+        let old = RoutineRules.date(for: "2026-10-01")!, now = RoutineRules.date(for: "2026-10-02")!
+        XCTAssertEqual(RoutineRules.refreshedSelection(old, previousToday: old, now: now), now)
+        let history = RoutineRules.date(for: "2026-09-20")!
+        XCTAssertEqual(RoutineRules.refreshedSelection(history, previousToday: old, now: now), history)
+    }
+    func testPastRecordRemainsVisibleAfterRecurrenceChanges() {
+        let day = RoutineRules.date(for: "2026-09-30")!
+        let r = Routine(name: "새 이름"); r.repeatKind = .weekdays; r.weekdays = [2]
+        let record = RoutineDayRecord(routineID: r.id, dayKey: "2026-09-30", name: "원래 이름"); record.status = .completed
+        XCTAssertTrue(RoutineRules.visible(r, records: [record], on: day, now: RoutineRules.date(for: "2026-10-02")!))
+        r.status = .archived
+        XCTAssertTrue(RoutineRules.visible(r, records: [record], on: day, now: RoutineRules.date(for: "2026-10-02")!))
+    }
     func date(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
     func testGroupedTimeSort() {
         let r = [Routine(name: "요가", minute: 390, sortOrder: 0), Routine(name: "미정", sortOrder: 1), Routine(name: "달리기", minute: 330, sortOrder: 2), Routine(name: "운동", minute: 345, sortOrder: 3)]

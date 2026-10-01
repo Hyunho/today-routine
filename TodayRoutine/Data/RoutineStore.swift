@@ -24,8 +24,9 @@ enum PersistenceFactory {
 }
 @MainActor final class RoutineStore {
     let container: ModelContainer; let context: ModelContext
+    var saveOperation: ((ModelContext) throws -> Void)?
     init(container: ModelContainer) { self.container = container; context = ModelContext(container); context.autosaveEnabled = false }
-    func save() throws { try context.save() }
+    func save() throws { if let saveOperation { try saveOperation(context) } else { try context.save() } }
     func loadSnapshot() throws -> StoreSnapshot {
         try StoreSnapshot(routines: context.fetch(FetchDescriptor<Routine>()), steps: context.fetch(FetchDescriptor<RoutineStep>()), groups: context.fetch(FetchDescriptor<RoutineGroup>()), records: context.fetch(FetchDescriptor<RoutineDayRecord>()), tasks: context.fetch(FetchDescriptor<TaskItem>()), blocks: context.fetch(FetchDescriptor<TimeBlock>()), reminders: context.fetch(FetchDescriptor<ReminderPreference>()))
     }

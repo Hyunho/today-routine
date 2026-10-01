@@ -20,6 +20,6 @@ struct SettingsView: View {
             }
             Section { Text("주간 횟수 목표 루틴에는 시간을 자동 배정하지 않습니다.").font(.footnote).foregroundStyle(.secondary) }
         }.navigationTitle("설정").toolbar { ToolbarItem(placement: .confirmationAction) { Button("완료") { dismiss() } } }.task { model.refreshNotifications() }
-        }
+        }.modifier(SheetSaveErrors(model: model))
     }
 }

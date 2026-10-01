@@ -20,7 +20,7 @@ struct TimeBlockEditor: View {
             do { if try model.store?.overlaps(draft) == true { overlapConfirmation = true } else { save() } } catch { model.error = error.localizedDescription }
         }.bold() } }
         .alert("겹치는 시간이 있습니다", isPresented: $overlapConfirmation) { Button("계속 저장") { save() }; Button("시간 수정", role: .cancel) {} } message: { Text("다른 타임블록과 겹쳐도 저장할 수 있습니다.") }
-        }
+        }.modifier(SheetSaveErrors(model: model))
     }
     func save() { if model.perform({ try $0.upsertBlock(draft) }) { dismiss() } }
 }

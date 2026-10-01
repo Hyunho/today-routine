@@ -32,6 +32,6 @@ struct RoutineEditor: View {
             .navigationTitle("루틴 편집").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("저장") { if model.perform({ try $0.upsertRoutine(draft) }) { dismiss() } }.bold() }; ToolbarItem(placement: .bottomBar) { EditButton() } }
             .confirmationDialog("이 단계를 삭제할까요?", isPresented: Binding(get: { stepToDelete != nil }, set: { if !$0 { stepToDelete = nil } })) { Button("단계 삭제", role: .destructive) { draft.steps.removeAll { $0.id == stepToDelete }; stepToDelete = nil } }
-        }
+        }.modifier(SheetSaveErrors(model: model))
     }
 }

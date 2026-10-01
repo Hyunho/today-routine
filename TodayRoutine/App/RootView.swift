@@ -15,7 +15,7 @@ struct RootView: View {
                 }
             }
         }
-        .alert("저장하지 못했습니다", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) { Button("확인") { model.error = nil } } message: { Text(model.error ?? "") }
+        .alert("저장하지 못했습니다", isPresented: Binding(get: { model.error != nil && model.presentedSheets == 0 }, set: { if !$0 { model.error = nil } })) { Button("확인") { model.error = nil } } message: { Text(model.error ?? "") }
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refreshNotifications() } }
     }
 }
@@ -29,4 +29,16 @@ struct MinutePicker: View {
 struct EmptyHint: View {
     var title: String; var message: String; var symbol: String
     var body: some View { ContentUnavailableView(title, systemImage: symbol, description: Text(message)).listRowBackground(Color.clear) }
+}
+
+struct SheetSaveErrors: ViewModifier {
+    let model: AppModel
+    func body(content: Content) -> some View {
+        content
+            .onAppear { model.presentedSheets += 1 }
+            .onDisappear { model.presentedSheets = max(0, model.presentedSheets - 1) }
+            .alert("저장하지 못했습니다", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+                Button("확인") { model.error = nil }
+            } message: { Text(model.error ?? "") }
+    }
 }

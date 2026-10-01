@@ -16,6 +16,6 @@ struct TaskEditor: View {
             }
         }.navigationTitle("일감 편집").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("저장") { if model.perform({ try $0.upsertTask(draft) }) { dismiss() } }.bold() } }
-        }
+        }.modifier(SheetSaveErrors(model: model))
     }
 }
