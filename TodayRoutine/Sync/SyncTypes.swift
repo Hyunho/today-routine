@@ -13,6 +13,9 @@ struct SyncOperation: Codable, Equatable {
 struct SyncEvent: Codable, Equatable, Identifiable {
     var version = 1; var spaceID: UUID; var id: UUID; var deviceID: UUID; var counter: Int64; var createdAt: Date
     var operations: [SyncOperation]
+    var csvDocumentID: UUID? = nil
+    var csvHash: String? = nil
+    var resolvedConflicts: [String]? = nil
     var order: String { String(format: "%020lld", counter) + "/" + deviceID.uuidString + "/" + id.uuidString }
 }
 struct SyncState: Codable, Equatable {
@@ -31,4 +34,12 @@ enum SyncCoding {
     static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T { let d = JSONDecoder(); d.dateDecodingStrategy = .millisecondsSince1970; return try d.decode(type, from: data) }
     static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
     static func stableID(_ text: String) -> UUID { let h = hash(Data(text.utf8)); return UUID(uuidString: "\(h.prefix(8))-\(h.dropFirst(8).prefix(4))-\(h.dropFirst(12).prefix(4))-\(h.dropFirst(16).prefix(4))-\(h.dropFirst(20).prefix(12))")! }
+}
+extension SyncState {
+    enum CodingKeys: String, CodingKey { case objects, tombstones, versions, counter }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy:CodingKeys.self)
+        try c.encode(objects,forKey:.objects); try c.encode(tombstones.sorted(),forKey:.tombstones)
+        try c.encode(versions,forKey:.versions); try c.encode(counter,forKey:.counter)
+    }
 }

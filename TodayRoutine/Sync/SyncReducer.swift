@@ -1,6 +1,6 @@
 import Foundation
 enum SyncReducer {
-    static func reduce(_ events: [SyncEvent]) throws -> SyncState {
+    static func reduce(_ events: [SyncEvent], initial: SyncState = SyncState()) throws -> SyncState {
         var unique: [UUID:SyncEvent] = [:]
         let space = events.first?.spaceID
         for event in events {
@@ -9,7 +9,7 @@ enum SyncReducer {
             if let old = unique[event.id], old != event { throw SyncError.invalid("같은 변경 ID의 내용이 다릅니다.") }
             unique[event.id] = event
         }
-        var state = SyncState()
+        var state = initial
         for event in unique.values.sorted(by: { $0.order < $1.order }) {
             state.counter = max(state.counter,event.counter)
             for op in event.operations {
@@ -23,7 +23,7 @@ enum SyncReducer {
                         object.fields["status"] = command
                         for id in valid { object.fields["step/"+id] = command == "completed" ? "true":"false"; state.versions[op.key+"/step/"+id] = event.order }
                         state.versions[op.key+"/status"] = event.order
-                    } else if op.values.keys.contains(where:{$0.hasPrefix("step/")}) || op.values["stepIDs"] != nil {
+                    } else if op.values["status"] == nil && (op.values.keys.contains(where:{$0.hasPrefix("step/")}) || op.values["stepIDs"] != nil) {
                         if !valid.isEmpty { object.fields["status"] = valid.allSatisfy { object.fields["step/"+$0] == "true" } ? "completed":"pending" }
                         if op.values.keys.contains(where:{$0.hasPrefix("step/")}) { state.versions[op.key+"/status"] = event.order }
                     }
