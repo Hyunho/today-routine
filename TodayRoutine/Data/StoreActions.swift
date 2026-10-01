@@ -36,6 +36,7 @@ extension RoutineStore {
         let snapshot = try loadSnapshot()
         try transaction {
             let r = try record(routineID: routineID, date: date, snapshot: snapshot)
+            syncDayCommand = (r.key, status)
             r.status = status; r.completedAt = status == .completed ? Date() : nil; r.updatedAt = Date()
             r.completedStepIDs = status == .completed ? snapshot.steps.filter { $0.routineID == routineID }.map(\.id) : []
         }

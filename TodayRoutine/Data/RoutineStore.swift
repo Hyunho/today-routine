@@ -9,7 +9,7 @@ enum StoreError: LocalizedError { case invalid(String)
 }
 enum PersistenceFactory {
     static func make(url: URL? = nil, inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema([Routine.self, RoutineStep.self, RoutineGroup.self, RoutineDayRecord.self, TaskItem.self, TimeBlock.self, ReminderPreference.self])
+        let schema = Schema([Routine.self, RoutineStep.self, RoutineGroup.self, RoutineDayRecord.self, TaskItem.self, TimeBlock.self, ReminderPreference.self, SyncJournalEntry.self, SyncDeviceState.self])
         let config: ModelConfiguration
         if let url, !inMemory {
             if FileManager.default.fileExists(atPath: url.path) {
@@ -24,6 +24,8 @@ enum PersistenceFactory {
 }
 @MainActor final class RoutineStore {
     let container: ModelContainer; let context: ModelContext
+    var syncApplying = false
+    var syncDayCommand: (String, DayStatus)?
     var saveOperation: ((ModelContext) throws -> Void)?
     init(container: ModelContainer) { self.container = container; context = ModelContext(container); context.autosaveEnabled = false }
     func save() throws { if let saveOperation { try saveOperation(context) } else { try context.save() } }
@@ -31,6 +33,10 @@ enum PersistenceFactory {
         try StoreSnapshot(routines: context.fetch(FetchDescriptor<Routine>()), steps: context.fetch(FetchDescriptor<RoutineStep>()), groups: context.fetch(FetchDescriptor<RoutineGroup>()), records: context.fetch(FetchDescriptor<RoutineDayRecord>()), tasks: context.fetch(FetchDescriptor<TaskItem>()), blocks: context.fetch(FetchDescriptor<TimeBlock>()), reminders: context.fetch(FetchDescriptor<ReminderPreference>()))
     }
     func transaction(_ body: () throws -> Void) throws {
-        do { try body(); try save() } catch { context.rollback(); throw error }
+        let adapter = StoreSyncAdapter(store: self)
+        let before: [String:SyncObject]?
+        if !syncApplying, try adapter.configuration() != nil { before = try StoreSyncBridge.objects(loadSnapshot()) } else { before = nil }
+        defer { syncDayCommand = nil }
+        do { try body(); if let before { try adapter.capture(before: before) }; try save() } catch { context.rollback(); throw error }
     }
 }
