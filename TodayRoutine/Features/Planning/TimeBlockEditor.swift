@@ -15,7 +15,7 @@ struct TimeBlockEditor: View {
                 ForEach(model.snapshot.tasks) { Text("일감 · \($0.title)").tag("task/\($0.id.uuidString)") }
                 ForEach(model.snapshot.routines.filter { $0.status == .active }) { Text("루틴 · \($0.name)").tag("routine/\($0.id.uuidString)") }
             } } footer: { Text("시간 배치는 연결 항목의 완료 상태를 바꾸지 않습니다.") }
-        }.navigationTitle("타임블록 편집").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("타임블록 편집").platformInlineTitle()
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("저장") {
             do { if try model.store?.overlaps(draft) == true { overlapConfirmation = true } else { save() } } catch { model.error = error.localizedDescription }
         }.bold() } }

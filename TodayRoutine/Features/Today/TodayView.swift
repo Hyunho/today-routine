@@ -44,7 +44,7 @@ struct TodayView: View {
                 let skipped = routines.filter { status($0) == .skipped }
                 if !skipped.isEmpty { Section("건너뜀") { ForEach(skipped) { routineRow($0) } } }
             }.navigationTitle("오늘")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { settings = true } label: { Image(systemName: "gearshape") }.accessibilityLabel("설정") } }
+            .toolbar { ToolbarItem(placement: .primaryAction) { Button { settings = true } label: { Image(systemName: "gearshape") }.accessibilityLabel("설정") } }
             .onChange(of: scenePhase) { _, phase in if phase == .active { refreshDay() } }
             .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in refreshDay() }
             .sheet(isPresented: $settings) { SettingsView(model: model) }

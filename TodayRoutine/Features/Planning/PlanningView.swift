@@ -16,7 +16,7 @@ struct PlanningView: View {
                     Section(done ? "완료한 일감" : "할 일") { ForEach(model.snapshot.tasks.filter { ($0.completedAt != nil) == done }.sorted { ($0.dayKey ?? "9999", $0.minute ?? Int.max, $0.createdAt) < ($1.dayKey ?? "9999", $1.minute ?? Int.max, $1.createdAt) }) { t in
                         HStack(spacing: 14) { Button { model.perform { try $0.setTaskCompleted(id: t.id, completed: !done) } } label: { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2) }.buttonStyle(.borderless).accessibilityLabel("\(t.title) 완료 전환")
                             Button { task = TaskDraft(t) } label: { VStack(alignment: .leading, spacing: 5) { Text(t.title).font(.headline); Text(t.dayKey.map { "\($0) · \(RoutineRules.timeLabel(t.minute))" } ?? "날짜 미정").font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
-                        }.padding(.vertical,5).swipeActions { Button("삭제", role: .destructive) { deleteTask = t.id } }
+                        }.padding(.vertical,5).swipeActions { Button("삭제", role: .destructive) { deleteTask = t.id } }.contextMenu { Button("일감 삭제",role:.destructive) { deleteTask = t.id } }
                     } }
                 }
             } else {
@@ -28,11 +28,11 @@ struct PlanningView: View {
                         VStack(alignment: .leading) { Text(RoutineRules.timeLabel(b.startMinute)).font(.headline); Text(RoutineRules.timeLabel(b.endMinute)).font(.caption).foregroundStyle(.secondary) }.monospacedDigit()
                         RoundedRectangle(cornerRadius: 2).fill(.teal).frame(width: 3)
                         VStack(alignment: .leading, spacing: 5) { Text(b.title).font(.headline); Text("\(b.endMinute-b.startMinute)분").font(.caption).foregroundStyle(.secondary); if b.linkedID != nil { Label("연결된 \(b.linkedKind == "task" ? "일감" : "루틴")", systemImage: "link").font(.caption).foregroundStyle(.secondary) } }
-                    }.padding(.vertical,6) }.buttonStyle(.plain).swipeActions { Button("삭제", role: .destructive) { deleteBlock = b.id } }
+                    }.padding(.vertical,6) }.buttonStyle(.plain).swipeActions { Button("삭제", role: .destructive) { deleteBlock = b.id } }.contextMenu { Button("타임블록 삭제",role:.destructive) { deleteBlock = b.id } }
                 }
             }
         }.navigationTitle("계획")
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { if mode == 0 { task = TaskDraft() } else { var d = BlockDraft(); d.dayKey = RoutineRules.dayKey(date); block = d } } label: { Image(systemName: "plus") }.accessibilityLabel(mode == 0 ? "일감 추가" : "타임블록 추가") } }
+        .toolbar { ToolbarItem(placement: .primaryAction) { Button { if mode == 0 { task = TaskDraft() } else { var d = BlockDraft(); d.dayKey = RoutineRules.dayKey(date); block = d } } label: { Image(systemName: "plus") }.accessibilityLabel(mode == 0 ? "일감 추가" : "타임블록 추가") } }
         .sheet(item: $task) { TaskEditor(model: model, draft: $0) }
         .sheet(item: $block) { TimeBlockEditor(model: model, draft: $0) }
         .confirmationDialog("이 일감을 삭제할까요?", isPresented: Binding(get: { deleteTask != nil }, set: { if !$0 { deleteTask = nil } })) { Button("일감 삭제", role: .destructive) { if let id = deleteTask { model.perform { try $0.deleteTask(id: id) } }; deleteTask = nil } }

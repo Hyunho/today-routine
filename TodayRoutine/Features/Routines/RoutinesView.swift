@@ -30,7 +30,7 @@ struct RoutinesView: View {
                     }.moveDisabled(mode != "내 순서") }
                 }
             }.navigationTitle("나의 루틴")
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Menu { Button("그룹 관리") { groups = true }; Button("설정") { settings = true } } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("루틴 메뉴") }; ToolbarItemGroup(placement: .topBarTrailing) { if mode == "내 순서" { EditButton() }; Button { draft = RoutineDraft() } label: { Image(systemName: "plus") }.accessibilityLabel("루틴 추가") } }
+            .toolbar { ToolbarItem(placement: .navigation) { Menu { Button("그룹 관리") { groups = true }; Button("설정") { settings = true } } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("루틴 메뉴") }; ToolbarItemGroup(placement: .primaryAction) { if mode == "내 순서" { PlatformEditButton() }; Button { draft = RoutineDraft() } label: { Image(systemName: "plus") }.accessibilityLabel("루틴 추가") } }
             .sheet(item: $draft) { RoutineEditor(model: model, draft: $0) }
             .sheet(isPresented: $groups) { GroupEditor(model: model) }
             .sheet(isPresented: $settings) { SettingsView(model: model) }
@@ -42,5 +42,16 @@ struct RoutinesView: View {
                 VStack(alignment: .leading, spacing: 6) { Text(r.name).font(.headline).foregroundStyle(.primary); Text("\(r.repeatKind == .weeklyGoal ? "주 \(r.weeklyTarget)회" : r.repeatKind.label) · \(RoutineRules.timeLabel(r.minute))").font(.caption).foregroundStyle(.secondary); if !model.steps(for: r).isEmpty { Text("\(model.steps(for: r).count)단계").font(.caption).foregroundStyle(.secondary) } }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
             .padding(.vertical, 5)
         }.buttonStyle(.plain)
+        .contextMenu {
+            Button("위로 이동") { move(r,by:-1) }.disabled(mode != "내 순서" || routines.first?.id == r.id)
+            Button("아래로 이동") { move(r,by:1) }.disabled(mode != "내 순서" || routines.last?.id == r.id)
+        }
+    }
+    func move(_ routine: Routine, by offset: Int) {
+        var ids = routines.map(\.id)
+        guard let index = ids.firstIndex(of:routine.id), ids.indices.contains(index+offset) else { return }
+        ids.swapAt(index,index+offset)
+        ids += model.snapshot.routines.filter { $0.status != selectedStatus }.sorted { $0.sortOrder < $1.sortOrder }.map(\.id)
+        model.perform { try $0.reorder(ids) }
     }
 }

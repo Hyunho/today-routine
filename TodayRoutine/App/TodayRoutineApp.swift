@@ -8,6 +8,7 @@ import SwiftData
 @MainActor @Observable final class AppModel {
     var store: RoutineStore?
     var snapshot = StoreSnapshot()
+    var sync: SyncCoordinator?
     var presentedSheets = 0
     var error: String?
     var startupError: String?
@@ -33,12 +34,27 @@ import SwiftData
             }
             #endif
             startupError = nil; try reload()
+            if let store {
+                let access = SyncFolderAccess(key:url == nil ? "routine.sync.bookmark":"routine.sync.test.\(url!.lastPathComponent)")
+                sync = SyncCoordinator(store:store,access:access)
+                sync?.onChange = { [weak self] in try? self?.reload(); self?.refreshNotifications() }
+                Task {
+                    #if DEBUG
+                    if let url, ProcessInfo.processInfo.arguments.contains("--uitest-sync") {
+                        let folder = url.deletingPathExtension().appendingPathExtension("sync")
+                        do { try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true); await sync?.connect(url:folder,persist:false) } catch { self.error = error.localizedDescription }
+                        return
+                    }
+                    #endif
+                    await sync?.restore()
+                }
+            }
         } catch { startupError = error.localizedDescription }
     }
     func reload() throws { if let store { snapshot = try store.loadSnapshot(); revision += 1 } }
     @discardableResult func perform(_ action: (RoutineStore) throws -> Void) -> Bool {
         guard let store else { return false }
-        do { try action(store); try reload(); refreshNotifications(); return true }
+        do { try action(store); try reload(); refreshNotifications(); sync?.localDataDidChange(); return true }
         catch { self.error = error.localizedDescription; try? reload(); return false }
     }
     func refreshNotifications() { notifications.enqueue(snapshot: snapshot) }

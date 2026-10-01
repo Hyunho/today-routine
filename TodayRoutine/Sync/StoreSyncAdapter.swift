@@ -21,7 +21,17 @@ import SwiftData
     func disconnect() throws { if let config = try configuration() { config.enabled = false; try store.save() } }
     func capture(before: [String:SyncObject]) throws {
         guard let config = try configuration() else { return }
-        let after = try StoreSyncBridge.objects(store.loadSnapshot())
+        var after = try StoreSyncBridge.objects(store.loadSnapshot())
+        let journalState = try exportState()
+        for (key,var object) in after where object.kind == .record && object.fields["dayKey"] != RoutineRules.dayKey(Date()) {
+            if let historic = journalState.objects[key] {
+                object.fields["stepIDs"] = historic.fields["stepIDs"]
+                object.fields["stepNames"] = historic.fields["stepNames"]
+                let ids = Set((historic.fields["stepIDs"] ?? "").split(separator:",").map(String.init))
+                object.fields = object.fields.filter { !$0.key.hasPrefix("step/") || ids.contains(String($0.key.dropFirst(5))) }
+                after[key] = object
+            }
+        }
         var ops: [SyncOperation] = []
         for object in after.values.sorted(by:{$0.key < $1.key}) {
             let old = before[object.key]

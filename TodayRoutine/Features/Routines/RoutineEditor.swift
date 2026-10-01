@@ -5,6 +5,10 @@ struct RoutineEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var stepToDelete: UUID?
     private let days = [(2,"월"),(3,"화"),(4,"수"),(5,"목"),(6,"금"),(7,"토"),(1,"일")]
+    func move(_ id: UUID, by offset: Int) {
+        guard let index = draft.steps.firstIndex(where:{$0.id == id}), draft.steps.indices.contains(index+offset) else { return }
+        draft.steps.swapAt(index,index+offset)
+    }
     var body: some View {
         NavigationStack {
             Form {
@@ -24,13 +28,17 @@ struct RoutineEditor: View {
                 }
                 Section { ForEach($draft.steps) { $step in
                     HStack { TextField("단계 이름", text: $step.name); Button(role: .destructive) { stepToDelete = step.id } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless).accessibilityLabel("\(step.name) 단계 삭제") }
+                    .contextMenu {
+                        Button("위로 이동") { move(step.id,by:-1) }.disabled(draft.steps.first?.id == step.id)
+                        Button("아래로 이동") { move(step.id,by:1) }.disabled(draft.steps.last?.id == step.id)
+                    }
                 }.onMove { from,to in draft.steps.move(fromOffsets: from, toOffset: to) }
                     Button("단계 추가", systemImage: "plus") { draft.steps.append(StepDraft()) }
                 } header: { Text("하위 단계") } footer: { Text("단계를 모두 체크하면 루틴이 완료됩니다.") }
                 Section { Picker("상태", selection: $draft.status) { ForEach(RoutineStatus.allCases, id: \.self) { Text($0.label).tag($0) } } }
             }
-            .navigationTitle("루틴 편집").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("저장") { if model.perform({ try $0.upsertRoutine(draft) }) { dismiss() } }.bold() }; ToolbarItem(placement: .bottomBar) { EditButton() } }
+            .navigationTitle("루틴 편집").platformInlineTitle()
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("저장") { if model.perform({ try $0.upsertRoutine(draft) }) { dismiss() } }.bold() }; ToolbarItem(placement: .automatic) { PlatformEditButton() } }
             .confirmationDialog("이 단계를 삭제할까요?", isPresented: Binding(get: { stepToDelete != nil }, set: { if !$0 { stepToDelete = nil } })) { Button("단계 삭제", role: .destructive) { draft.steps.removeAll { $0.id == stepToDelete }; stepToDelete = nil } }
         }.modifier(SheetSaveErrors(model: model))
     }

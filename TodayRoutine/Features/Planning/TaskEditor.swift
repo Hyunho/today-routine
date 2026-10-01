@@ -14,7 +14,7 @@ struct TaskEditor: View {
                     if draft.minute != nil { MinutePicker(title: "시간", minute: Binding(get: { draft.minute ?? 540 }, set: { draft.minute = $0 })) }
                 }
             }
-        }.navigationTitle("일감 편집").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle("일감 편집").platformInlineTitle()
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("저장") { if model.perform({ try $0.upsertTask(draft) }) { dismiss() } }.bold() } }
         }.modifier(SheetSaveErrors(model: model))
     }
