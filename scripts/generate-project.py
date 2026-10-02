@@ -25,6 +25,12 @@ for name,files,product,ptype in [('TodayRoutine',appfiles,'TodayRoutine.app','co
  prod=add(product,'PBXFileReference',explicitFileType='wrapper.application' if isapp else 'wrapper.cfbundle',path=product,sourceTree='BUILT_PRODUCTS_DIR'); products.append(prod)
  src=add(name+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=refs,runOnlyForDeploymentPostprocessing=0)
  fw=add(name+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0)
+ resources=[]
+ if mac and isapp:
+  assetpath='TodayRoutine/Resources/MacAssets.xcassets'
+  assetref=add(assetpath,'PBXFileReference',lastKnownFileType='folder.assetcatalog',path=assetpath,sourceTree='<group>'); filerefs.append(assetref)
+  resources.append(add(name+'assets','PBXBuildFile',fileRef=assetref))
+ res=add(name+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=resources,runOnlyForDeploymentPostprocessing=0)
  cfgs=[]
  for cfg in ['Debug','Release']:
   settings={'PRODUCT_NAME':'$(TARGET_NAME)','SWIFT_VERSION':'5.0','IPHONEOS_DEPLOYMENT_TARGET':'17.0','SDKROOT':'iphoneos','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator','TARGETED_DEVICE_FAMILY':'1','GENERATE_INFOPLIST_FILE':'YES','CODE_SIGN_STYLE':'Automatic','PRODUCT_BUNDLE_IDENTIFIER':'com.hyunho.TodayRoutine'+('UITests' if name.endswith('UITests') else ''),'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if cfg=='Debug' else '-O','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG' if cfg=='Debug' else '', 'ENABLE_TESTABILITY':'YES','CURRENT_PROJECT_VERSION':'1','MARKETING_VERSION':'1.0','LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'}
@@ -32,7 +38,7 @@ for name,files,product,ptype in [('TodayRoutine',appfiles,'TodayRoutine.app','co
   if mac:
    settings.update({'SDKROOT':'macosx','SUPPORTED_PLATFORMS':'macosx','MACOSX_DEPLOYMENT_TARGET':'14.0','CODE_SIGN_IDENTITY':'-','LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks'})
    settings.pop('TARGETED_DEVICE_FAMILY',None)
-   if isapp: settings['CODE_SIGN_ENTITLEMENTS']='TodayRoutine/TodayRoutineMac.entitlements'
+   if isapp: settings.update({'CODE_SIGN_ENTITLEMENTS':'TodayRoutine/TodayRoutineMac.entitlements','ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon'})
   if isapp: settings.update({'INFOPLIST_KEY_CFBundleDisplayName':'오늘의 루틴','INFOPLIST_KEY_UILaunchScreen_Generation':'YES','INFOPLIST_KEY_UIApplicationSceneManifest_Generation':'YES','INFOPLIST_KEY_UISupportedInterfaceOrientations':'UIInterfaceOrientationPortrait'})
   else: settings['TEST_TARGET_NAME']=appname
   cfgs.append(add(name+cfg,'XCBuildConfiguration',buildSettings=settings,name=cfg))
@@ -41,7 +47,7 @@ for name,files,product,ptype in [('TodayRoutine',appfiles,'TodayRoutine.app','co
  if name.endswith('UITests'):
   proxy=add(name+'proxy','PBXContainerItemProxy',containerPortal=projectid,proxyType=1,remoteGlobalIDString=ident(appname),remoteInfo=appname)
   deps=[add(name+'dep','PBXTargetDependency',target=ident(appname),targetProxy=proxy)]
- targets.append(add(name,'PBXNativeTarget',buildConfigurationList=cfglist,buildPhases=[src,fw],buildRules=[],dependencies=deps,name=name,productName=name,productReference=prod,productType=ptype))
+ targets.append(add(name,'PBXNativeTarget',buildConfigurationList=cfglist,buildPhases=[src,fw,res],buildRules=[],dependencies=deps,name=name,productName=name,productReference=prod,productType=ptype))
 pg=add('products','PBXGroup',children=products,name='Products',sourceTree='<group>')
 group=add('main','PBXGroup',children=list(dict.fromkeys(filerefs))+[pg],sourceTree='<group>')
 pcfg=[add('project'+cfg,'XCBuildConfiguration',buildSettings={'CLANG_ENABLE_MODULES':'YES','SWIFT_VERSION':'5.0'},name=cfg) for cfg in ['Debug','Release']]
