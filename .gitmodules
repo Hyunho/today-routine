@@ -1,0 +1,3 @@
+[submodule "Packages/NativeLogseq"]
+	path = Packages/NativeLogseq
+	url = git@github.com:Hyunho/bilog.git
