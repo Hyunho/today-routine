@@ -26,6 +26,8 @@ struct InboxItem: Codable, Identifiable, Equatable, Sendable {
     var date: Date
     var isRead = false
     var isSaved = false
+    var richBody: String?
+    var bodyFormat: String?
 }
 struct InboxPendingReminder: Codable, Equatable, Sendable {
     var id: String

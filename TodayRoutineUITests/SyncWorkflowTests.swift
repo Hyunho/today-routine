@@ -15,7 +15,7 @@ final class SyncWorkflowTests: XCTestCase {
     func testExternalCSVAutomaticallyCompletesRoutine() throws {
         continueAfterFailure = false
         let app = XCUIApplication(); app.launchArguments = ["--uitest-store",UUID().uuidString,"--uitest-sync"]; app.launch()
-        app.tabBars.buttons["루틴"].tap(); app.buttons["루틴 추가"].tap()
+        app.tabBars.buttons["전체"].tap(); if app.buttons["all-routines"].exists { app.buttons["all-routines"].tap() }; app.buttons["루틴 추가"].tap()
         let name = app.textFields["루틴 이름"]; name.tap(); name.typeText("CSV 자동 확인")
         app.buttons["저장"].tap(); app.tabBars.buttons["오늘"].tap(); app.buttons["설정"].tap()
         app.buttons.containing(.staticText,identifier:"iCloud Drive 폴더").firstMatch.tap()

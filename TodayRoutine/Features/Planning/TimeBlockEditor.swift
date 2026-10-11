@@ -12,7 +12,6 @@ struct TimeBlockEditor: View {
             MinutePicker(title: "시작", minute: $draft.startMinute); MinutePicker(title: "종료", minute: $draft.endMinute)
             Section { Picker("연결 항목", selection: linkSelection) {
                 Text("연결 없음").tag("")
-                ForEach(model.snapshot.tasks) { Text("일감 · \($0.title)").tag("task/\($0.id.uuidString)") }
                 ForEach(model.snapshot.routines.filter { $0.status == .active }) { Text("루틴 · \($0.name)").tag("routine/\($0.id.uuidString)") }
             } } footer: { Text("시간 배치는 연결 항목의 완료 상태를 바꾸지 않습니다.") }
         }.navigationTitle("타임블록 편집").platformInlineTitle()

@@ -16,9 +16,11 @@ struct SyncSettingsView: View {
                 Text(sync.status).accessibilityIdentifier("동기화 상태")
                 if let folder = sync.folderName { LabeledContent("선택한 폴더",value:folder) }
                 if let date = sync.lastChecked { LabeledContent("마지막 확인",value:date.formatted(date:.abbreviated,time:.standard)) }
-                LabeledContent("전송 대기",value:"\(sync.pendingCount)개")
-                Button(sync.folderName == nil ? "동기화 폴더 선택":"폴더 다시 선택") { chooseFolder = true }
-                if sync.folderName != nil { Button("지금 확인") { Task { await sync.refresh() } }; Button("연결 해제",role:.destructive) { disconnect = true } }
+                LabeledContent("폴더 저장 대기",value:"\(sync.pendingCount)개")
+                Button(sync.folderName == nil ? "동기화 폴더 선택":"폴더 다시 선택") { chooseFolder = true }.disabled(sync.isRequestingCloudSync)
+                if sync.folderName != nil { Button("지금 동기화") { Task { await sync.syncNow() } }.disabled(sync.isRequestingCloudSync); Button("연결 해제",role:.destructive) { disconnect = true }.disabled(sync.isRequestingCloudSync) }
+                if sync.isRequestingCloudSync { ProgressView("전송 요청 중") }
+                if let transfer = sync.cloudTransferStatus { Text(transfer).font(.caption).foregroundStyle(.secondary) }
                 if let pickerError { Text(pickerError).foregroundStyle(.red) }
             }
             Section { Text("파일 앱·Finder의 iCloud Drive에 빈 전용 폴더를 만들고, 두 기기에서 같은 폴더를 선택하세요. 앱을 사용하는 동안 자동으로 확인합니다. iCloud 전달에는 시간이 걸릴 수 있습니다.").font(.footnote) }

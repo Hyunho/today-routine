@@ -2,6 +2,35 @@ import XCTest
 import SwiftData
 @testable import RoutineCore
 final class SyncStoreTests: XCTestCase {
+    @MainActor func testRoutineDeletionRemovesOnlyItsDataAndSurvivesReplay() throws {
+        let store = RoutineStore(container: try PersistenceFactory.make(inMemory: true))
+        let removed = Routine(name: "삭제 대상"), kept = Routine(name: "보존할 주간 목표")
+        for routine in [removed, kept] {
+            routine.repeatKind = .weeklyGoal
+            store.context.insert(routine)
+            store.context.insert(RoutineStep(routineID: routine.id, name: routine.name + " 단계"))
+            store.context.insert(RoutineDayRecord(routineID: routine.id, dayKey: "2026-10-01", name: routine.name))
+            store.context.insert(ReminderPreference(routineID: routine.id))
+        }
+        let block = TimeBlock(title: "보존할 시간 블록", dayKey: "2026-10-01", start: 540, end: 600)
+        block.linkedID = removed.id; block.linkedKind = "routine"
+        store.context.insert(block); try store.save()
+        let sync = StoreSyncAdapter(store: store), space = UUID(), device = UUID()
+        try sync.enable(spaceID: space, deviceID: device)
+        let oldEvents = try sync.events()
+        let deletion = SyncEvent(spaceID: space, id: UUID(), deviceID: device, counter: 2, createdAt: Date(),
+                                 operations: [SyncOperation(kind: .routine, id: removed.id.uuidString, deleted: true)])
+        try sync.appendLocal(deletion)
+        try sync.ingest(oldEvents)
+        let snapshot = try store.loadSnapshot()
+        XCTAssertEqual(snapshot.routines.map(\.id), [kept.id])
+        XCTAssertEqual(snapshot.steps.map(\.routineID), [kept.id])
+        XCTAssertEqual(snapshot.records.map(\.routineID), [kept.id])
+        XCTAssertEqual(snapshot.reminders.map(\.routineID), [kept.id])
+        XCTAssertEqual(snapshot.blocks.map(\.id), [block.id])
+        XCTAssertNil(block.linkedID)
+        XCTAssertTrue(try sync.exportState().tombstones.contains("routine/" + removed.id.uuidString))
+    }
     @MainActor func testBootstrapAndRemoteChecksPreserveBothDevices() throws {
         let a = RoutineStore(container: try PersistenceFactory.make(inMemory:true)), b = RoutineStore(container:try PersistenceFactory.make(inMemory:true))
         var d = RoutineDraft(); d.name = "아침"; d.steps = [StepDraft(name:"물"),StepDraft(name:"독서")]; try a.upsertRoutine(d)
@@ -80,5 +109,24 @@ extension SyncStoreTests {
         let record = try sync.exportState().objects["record/"+draft.id.uuidString+"/2026-10-01"]
         XCTAssertEqual(record?.fields["stepIDs"],oldID)
         XCTAssertTrue(record?.fields["stepNames"]?.contains("옛 단계") == true)
+    }
+}
+
+extension SyncStoreTests {
+    @MainActor func testRoutineDurationSyncRoundTripAndClearing() throws {
+        let store = RoutineStore(container: try PersistenceFactory.make(inMemory: true))
+        let sync = StoreSyncAdapter(store: store), space = UUID(), device = UUID(), id = UUID()
+        try sync.enable(spaceID: space, deviceID: UUID())
+        func event(_ value: String, counter: Int64) -> SyncEvent {
+            SyncEvent(spaceID: space, id: UUID(), deviceID: device, counter: counter, createdAt: Date(),
+                      operations: [SyncOperation(kind: .routine, id: id.uuidString, values: ["name": "독서", "durationMinutes": value])])
+        }
+        try sync.ingest([event("45", counter: 1)])
+        XCTAssertEqual(try StoreSyncBridge.objects(store.loadSnapshot())["routine/" + id.uuidString]?.fields["durationMinutes"], "45")
+        try sync.ingest([event("", counter: 2)])
+        XCTAssertEqual(try StoreSyncBridge.objects(store.loadSnapshot())["routine/" + id.uuidString]?.fields["durationMinutes"], "")
+        for value in ["0", "-1", "1441", "abc"] {
+            XCTAssertThrowsError(try SyncValidation.validate(event(value, counter: 3)))
+        }
     }
 }

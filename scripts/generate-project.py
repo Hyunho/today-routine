@@ -1,5 +1,7 @@
 from pathlib import Path
 import hashlib,json
+from app_version import read_version
+app_version = read_version()
 objects={}
 def ident(s): return hashlib.sha1(s.encode()).hexdigest()[:24].upper()
 def add(key,isa,**kw):
@@ -9,22 +11,27 @@ def encode(x):
  if isinstance(x,list): return '( '+', '.join(encode(v) for v in x)+' )'
  return json.dumps(str(x),ensure_ascii=False)
 root=Path(__file__).resolve().parent.parent
+if not (root/'Packages/NativeLogseq/Package.swift').exists():
+ raise SystemExit('Initialize Logseq: git submodule update --init --recursive')
+logseqpackage=add('logseq-package','XCLocalSwiftPackageReference',relativePath='Packages/NativeLogseq')
+logseqproduct=add('logseq-product','XCSwiftPackageProductDependency',productName='NativeLogseqUI')
 appfiles=sorted(str(p.relative_to(root)) for p in (root/'TodayRoutine').rglob('*.swift'))
 uifiles=sorted(str(p.relative_to(root)) for p in (root/'TodayRoutineUITests').rglob('*.swift'))
 macuifiles=sorted(str(p.relative_to(root)) for p in (root/'TodayRoutineMacUITests').rglob('*.swift'))
+macunitfiles=sorted(str(p.relative_to(root)) for p in (root/'TodayRoutineMacTests').rglob('*.swift'))
 products=[]; filerefs=[]; targets=[]
 projectid=ident('project'); appid=ident('TodayRoutine'); testsid=ident('TodayRoutineUITests')
-for name,files,product,ptype in [('TodayRoutine',appfiles,'TodayRoutine.app','com.apple.product-type.application'),('TodayRoutineUITests',uifiles,'TodayRoutineUITests.xctest','com.apple.product-type.bundle.ui-testing'),('TodayRoutineMac',appfiles,'TodayRoutineMac.app','com.apple.product-type.application'),('TodayRoutineMacUITests',macuifiles,'TodayRoutineMacUITests.xctest','com.apple.product-type.bundle.ui-testing')]:
+for name,files,product,ptype in [('TodayRoutine',appfiles,'TodayRoutine.app','com.apple.product-type.application'),('TodayRoutineUITests',uifiles,'TodayRoutineUITests.xctest','com.apple.product-type.bundle.ui-testing'),('TodayRoutineMac',appfiles,'TodayRoutineMac.app','com.apple.product-type.application'),('TodayRoutineMacUITests',macuifiles,'TodayRoutineMacUITests.xctest','com.apple.product-type.bundle.ui-testing'),('TodayRoutineMacTests',macunitfiles,'TodayRoutineMacTests.xctest','com.apple.product-type.bundle.unit-test')]:
  mac = 'Mac' in name
  appname = 'TodayRoutineMac' if mac else 'TodayRoutine'
- isapp = not name.endswith('UITests')
+ isapp = not name.endswith('Tests')
  refs=[]
  for path in files:
   ref=add(path,'PBXFileReference',lastKnownFileType='sourcecode.swift',path=path,sourceTree='<group>'); filerefs.append(ref)
   refs.append(add('build:'+name+':'+path,'PBXBuildFile',fileRef=ref))
  prod=add(product,'PBXFileReference',explicitFileType='wrapper.application' if isapp else 'wrapper.cfbundle',path=product,sourceTree='BUILT_PRODUCTS_DIR'); products.append(prod)
  src=add(name+'sources','PBXSourcesBuildPhase',buildActionMask=2147483647,files=refs,runOnlyForDeploymentPostprocessing=0)
- fw=add(name+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[],runOnlyForDeploymentPostprocessing=0)
+ fw=add(name+'frameworks','PBXFrameworksBuildPhase',buildActionMask=2147483647,files=[add(name+'logseq-link','PBXBuildFile',productRef=logseqproduct)] if name == 'TodayRoutineMac' else [],runOnlyForDeploymentPostprocessing=0)
  resources=[]
  if mac and isapp:
   assetpath='TodayRoutine/Resources/MacAssets.xcassets'
@@ -33,26 +40,29 @@ for name,files,product,ptype in [('TodayRoutine',appfiles,'TodayRoutine.app','co
  res=add(name+'resources','PBXResourcesBuildPhase',buildActionMask=2147483647,files=resources,runOnlyForDeploymentPostprocessing=0)
  cfgs=[]
  for cfg in ['Debug','Release']:
-  settings={'PRODUCT_NAME':'$(TARGET_NAME)','SWIFT_VERSION':'5.0','IPHONEOS_DEPLOYMENT_TARGET':'17.0','SDKROOT':'iphoneos','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator','TARGETED_DEVICE_FAMILY':'1','GENERATE_INFOPLIST_FILE':'YES','CODE_SIGN_STYLE':'Automatic','PRODUCT_BUNDLE_IDENTIFIER':'com.hyunho.TodayRoutine'+('UITests' if name.endswith('UITests') else ''),'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if cfg=='Debug' else '-O','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG' if cfg=='Debug' else '', 'ENABLE_TESTABILITY':'YES','CURRENT_PROJECT_VERSION':'1','MARKETING_VERSION':'1.0','LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'}
+  settings={'PRODUCT_NAME':'$(TARGET_NAME)','SWIFT_VERSION':'5.0','IPHONEOS_DEPLOYMENT_TARGET':'17.0','SDKROOT':'iphoneos','SUPPORTED_PLATFORMS':'iphoneos iphonesimulator','TARGETED_DEVICE_FAMILY':'1','GENERATE_INFOPLIST_FILE':'YES','CODE_SIGN_STYLE':'Automatic','PRODUCT_BUNDLE_IDENTIFIER':'com.hyunho.TodayRoutine'+('UITests' if name.endswith('UITests') else ''),'SWIFT_OPTIMIZATION_LEVEL':'-Onone' if cfg=='Debug' else '-O','SWIFT_ACTIVE_COMPILATION_CONDITIONS':'DEBUG' if cfg=='Debug' else '', 'ENABLE_TESTABILITY':'YES','CURRENT_PROJECT_VERSION':str(app_version['build']),'MARKETING_VERSION':app_version['version'],'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'}
   settings['PRODUCT_BUNDLE_IDENTIFIER']='com.hyunho.'+name
   if mac:
-   settings.update({'SDKROOT':'macosx','SUPPORTED_PLATFORMS':'macosx','MACOSX_DEPLOYMENT_TARGET':'14.0','CODE_SIGN_IDENTITY':'-','LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks'})
+   settings.update({'ONLY_ACTIVE_ARCH':'YES' if cfg == 'Debug' else 'NO','SDKROOT':'macosx','SUPPORTED_PLATFORMS':'macosx','MACOSX_DEPLOYMENT_TARGET':'14.0','CODE_SIGN_IDENTITY':'-','LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks'})
    settings.pop('TARGETED_DEVICE_FAMILY',None)
    if isapp: settings.update({'CODE_SIGN_ENTITLEMENTS':'TodayRoutine/TodayRoutineMac.entitlements','ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon'})
-  if isapp: settings.update({'INFOPLIST_KEY_CFBundleDisplayName':'오늘의 루틴','INFOPLIST_KEY_UILaunchScreen_Generation':'YES','INFOPLIST_KEY_UIApplicationSceneManifest_Generation':'YES','INFOPLIST_KEY_UISupportedInterfaceOrientations':'UIInterfaceOrientationPortrait'})
-  else: settings['TEST_TARGET_NAME']=appname
+  if isapp: settings.update({'INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription':'선택한 Apple 캘린더의 일정을 표시하고, 사용자가 확인한 루틴을 새 반복 일정으로 저장합니다.','INFOPLIST_KEY_NSRemindersFullAccessUsageDescription':'선택한 미리 알림 목록을 일감과 오늘 화면에 표시하고 추가·수정·완료 상태를 반영합니다.','INFOPLIST_KEY_CFBundleDisplayName':'오늘의 루틴','INFOPLIST_KEY_UILaunchScreen_Generation':'YES','INFOPLIST_KEY_UIApplicationSceneManifest_Generation':'YES','INFOPLIST_KEY_UISupportedInterfaceOrientations':'UIInterfaceOrientationPortrait'})
+  else:
+   settings['TEST_TARGET_NAME']=appname
+   if name == 'TodayRoutineMacTests':
+    settings.update({'TEST_HOST':'$(BUILT_PRODUCTS_DIR)/TodayRoutineMac.app/Contents/MacOS/TodayRoutineMac','BUNDLE_LOADER':'$(TEST_HOST)','SWIFT_INCLUDE_PATHS':'$(BUILT_PRODUCTS_DIR)'})
   cfgs.append(add(name+cfg,'XCBuildConfiguration',buildSettings=settings,name=cfg))
  cfglist=add(name+'configs','XCConfigurationList',buildConfigurations=cfgs,defaultConfigurationIsVisible=0,defaultConfigurationName='Release')
  deps=[]
- if name.endswith('UITests'):
+ if not isapp:
   proxy=add(name+'proxy','PBXContainerItemProxy',containerPortal=projectid,proxyType=1,remoteGlobalIDString=ident(appname),remoteInfo=appname)
   deps=[add(name+'dep','PBXTargetDependency',target=ident(appname),targetProxy=proxy)]
- targets.append(add(name,'PBXNativeTarget',buildConfigurationList=cfglist,buildPhases=[src,fw,res],buildRules=[],dependencies=deps,name=name,productName=name,productReference=prod,productType=ptype))
+ targets.append(add(name,'PBXNativeTarget',buildConfigurationList=cfglist,buildPhases=[src,fw,res],buildRules=[],dependencies=deps,name=name,productName=name,productReference=prod,productType=ptype,packageProductDependencies=[logseqproduct] if name in ('TodayRoutineMac','TodayRoutineMacTests') else []))
 pg=add('products','PBXGroup',children=products,name='Products',sourceTree='<group>')
 group=add('main','PBXGroup',children=list(dict.fromkeys(filerefs))+[pg],sourceTree='<group>')
 pcfg=[add('project'+cfg,'XCBuildConfiguration',buildSettings={'CLANG_ENABLE_MODULES':'YES','SWIFT_VERSION':'5.0'},name=cfg) for cfg in ['Debug','Release']]
 pcl=add('projectconfigs','XCConfigurationList',buildConfigurations=pcfg,defaultConfigurationIsVisible=0,defaultConfigurationName='Release')
-add('project','PBXProject',attributes={'LastUpgradeCheck':'1600'},buildConfigurationList=pcl,compatibilityVersion='Xcode 14.0',developmentRegion='ko',knownRegions=['ko','en','Base'],mainGroup=group,productRefGroup=pg,projectDirPath='',projectRoot='',targets=targets)
+add('project','PBXProject',attributes={'LastUpgradeCheck':'1600'},buildConfigurationList=pcl,compatibilityVersion='Xcode 14.0',developmentRegion='ko',knownRegions=['ko','en','Base'],mainGroup=group,productRefGroup=pg,projectDirPath='',projectRoot='',targets=targets,packageReferences=[logseqpackage])
 out=root/'TodayRoutine.xcodeproj'; out.mkdir(exist_ok=True)
 (out/'project.pbxproj').write_text('// !$*UTF8*$!\n'+encode({'archiveVersion':1,'classes':{},'objectVersion':56,'objects':objects,'rootObject':projectid})+'\n')
 scheme=out/'xcshareddata/xcschemes'; scheme.mkdir(parents=True,exist_ok=True)
@@ -63,4 +73,6 @@ a=ref(appid,'TodayRoutine','TodayRoutine.app'); t=ref(testsid,'TodayRoutineUITes
 print('Generated project:',len(appfiles),'Swift sources')
 
 macscheme=(scheme/'TodayRoutine.xcscheme').read_text().replace(testsid,ident('TodayRoutineMacUITests')).replace(appid,ident('TodayRoutineMac')).replace('TodayRoutineUITests','TodayRoutineMacUITests').replace('TodayRoutine.app','TodayRoutineMac.app').replace('BlueprintName=\"TodayRoutine\"','BlueprintName=\"TodayRoutineMac\"')
+unitref=ref(ident('TodayRoutineMacTests'),'TodayRoutineMacTests','TodayRoutineMacTests.xctest')
+macscheme=macscheme.replace('</Testables>',f'<TestableReference skipped="NO">{unitref}</TestableReference></Testables>')
 (scheme/'TodayRoutineMac.xcscheme').write_text(macscheme)

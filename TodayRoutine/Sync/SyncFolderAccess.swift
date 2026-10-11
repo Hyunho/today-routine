@@ -20,7 +20,15 @@ import Foundation
         guard let data = defaults.data(forKey:key) else { return nil }
         var stale = false
         #if os(macOS)
-        let url = try URL(resolvingBookmarkData:data,options:[.withSecurityScope,.withoutUI],relativeTo:nil,bookmarkDataIsStale:&stale)
+        let url: URL
+        do {
+            url = try URL(resolvingBookmarkData:data,options:[.withSecurityScope,.withoutUI],relativeTo:nil,bookmarkDataIsStale:&stale)
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadCorruptFileError {
+            // Local non-sandboxed builds can save ordinary bookmarks even when
+            // creation requests a security scope. Resolve that same bookmark;
+            // never substitute a stored path or bypass sandbox file permissions.
+            url = try URL(resolvingBookmarkData:data,options:.withoutUI,relativeTo:nil,bookmarkDataIsStale:&stale)
+        }
         #else
         let url = try URL(resolvingBookmarkData:data,options:.withoutUI,relativeTo:nil,bookmarkDataIsStale:&stale)
         #endif

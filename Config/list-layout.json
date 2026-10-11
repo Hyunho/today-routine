@@ -1,0 +1,7 @@
+{
+  "itemMinHeight": 54,
+  "durationHeightPerMinute": 0.5,
+  "gapHeightPerHour": 24,
+  "itemSpacing": 8,
+  "lineInset": 8
+}

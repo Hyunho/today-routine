@@ -63,7 +63,7 @@ import Observation
                 for entry in parsed.entries {
                     let id = "feed/\(feed.id.uuidString)/\(entry.identity)"
                     let old = map[id]
-                    map[id] = InboxItem(id: id, kind: .feed, subscriptionID: feed.id, title: entry.title, sourceTitle: title, body: entry.body, link: entry.link, date: entry.publishedAt ?? old?.date ?? now, isRead: old?.isRead ?? false, isSaved: old?.isSaved ?? false)
+                    map[id] = InboxItem(id: id, kind: .feed, subscriptionID: feed.id, title: entry.title, sourceTitle: title, body: entry.body, link: entry.link, date: entry.publishedAt ?? old?.date ?? now, isRead: old?.isRead ?? false, isSaved: old?.isSaved ?? false, richBody: entry.richBody, bodyFormat: entry.bodyFormat)
                 }
                 s.items = Array(map.values); s.prune(now: now)
             }
@@ -77,7 +77,7 @@ import Observation
     func reconcileReminders(_ requests: [ReminderRequest], now: Date = Date()) {
         change { InboxReminderReducer.reconcile(state: &$0, requests: requests, now: now) }
     }
-    func setRead(_ id: String) { change { s in if let i = s.items.firstIndex(where: { $0.id == id }) { s.items[i].isRead = true } } }
+    func setRead(_ id: String, read: Bool = true) { change { s in if let i = s.items.firstIndex(where: { $0.id == id }) { s.items[i].isRead = read } } }
     func toggleSaved(_ id: String) { change { s in if let i = s.items.firstIndex(where: { $0.id == id }) { s.items[i].isSaved.toggle() } } }
     func savePosition(_ id: String, key: String) { change { if $0.items.contains(where: { $0.id == id }) { $0.positions[key] = id } } }
     func items(filter: InboxFilter, savedOnly: Bool) -> [InboxItem] {

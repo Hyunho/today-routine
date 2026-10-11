@@ -3,3 +3,7 @@
 .DS_Store
 xcuserdata/
 *.xcuserstate
+exports/private-backups/
+
+# Local release archives and personal data exports
+exports/

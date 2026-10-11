@@ -1,5 +1,8 @@
 import Foundation
 enum RoutineRules {
+    static func minute(_ routine: Routine, records: [RoutineDayRecord], on date: Date) -> Int? {
+        records.first { $0.routineID == routine.id && $0.dayKey == dayKey(date) }?.minuteOverride ?? routine.minute
+    }
     static func refreshedSelection(_ selection: Date, previousToday: Date, now: Date) -> Date {
         dayKey(selection) == dayKey(previousToday) ? now : selection
     }
@@ -22,6 +25,7 @@ enum RoutineRules {
     }
     static func isScheduled(_ routine: Routine, on date: Date) -> Bool {
         guard routine.status == .active else { return false }
+        guard routine.calendarLink == nil else { return false }
         switch routine.repeatKind { case .daily: return true; case .weekdays: return routine.weekdays.contains(calendar.component(.weekday, from: date)); case .weeklyGoal: return false }
     }
     static func timeSorted(_ routines: [Routine]) -> [Routine] {
@@ -33,6 +37,14 @@ enum RoutineRules {
     static func completedCount(routineID: UUID, records: [RoutineDayRecord], week: Date) -> Int {
         let start = dayKey(weekStart(week)), end = dayKey(calendar.date(byAdding: .day, value: 7, to: weekStart(week))!)
         return Set(records.filter { $0.routineID == routineID && $0.status == .completed && $0.dayKey >= start && $0.dayKey < end }.map(\.dayKey)).count
+    }
+    static func endMinute(start: Int?, duration: Int?) -> Int? {
+        guard let start, let duration, (0..<1440).contains(start), (1...1440).contains(duration) else { return nil }
+        return min(1440, start + duration)
+    }
+    static func durationLabel(_ duration: Int?) -> String {
+        guard let duration else { return "미정" }
+        return duration < 60 ? "\(duration)분" : duration % 60 == 0 ? "\(duration / 60)시간" : "\(duration / 60)시간 \(duration % 60)분"
     }
     static func timeLabel(_ minute: Int?) -> String { guard let minute else { return "시간 미정" }; return String(format: "%02d:%02d", minute / 60, minute % 60) }
 }

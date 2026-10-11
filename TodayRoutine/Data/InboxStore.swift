@@ -13,7 +13,7 @@ import Foundation
                 state = try JSONDecoder().decode(InboxState.self, from: Data(contentsOf: url))
                 try Self.validate(state)
             } catch {
-                throw InboxError.invalid("수신함 기록을 열 수 없습니다. 원본은 보존되어 있습니다. \(error.localizedDescription)")
+                throw InboxError.invalid("피드 기록을 열 수 없습니다. 원본은 보존되어 있습니다. \(error.localizedDescription)")
             }
         } else { state = InboxState() }
     }
@@ -49,7 +49,7 @@ import Foundation
               Set(state.pendingReminders.map(\.id)).count == state.pendingReminders.count,
               state.items.allSatisfy({ !$0.id.isEmpty && !$0.title.isEmpty }),
               state.subscriptions.allSatisfy({ $0.url.scheme?.lowercased() == "https" && $0.url.host != nil }) else {
-            throw InboxError.invalid("지원하지 않거나 손상된 수신함 형식입니다.")
+            throw InboxError.invalid("지원하지 않거나 손상된 피드 형식입니다.")
         }
     }
 }

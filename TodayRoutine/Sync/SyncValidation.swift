@@ -2,9 +2,9 @@ import Foundation
 enum SyncValidation {
     static let common: Set<String> = ["createdAt","updatedAt"]
     static let fields: [SyncKind:Set<String>] = [
-        .routine:["name","note","repeatRaw","weekdays","weeklyTarget","minute","groupID","sortOrder","statusRaw"],
+        .routine:["name","note","repeatRaw","weekdays","weeklyTarget","minute","durationMinutes","groupID","sortOrder","statusRaw","calendarLink"],
         .step:["routineID","name","sortOrder"], .group:["name","sortOrder"],
-        .record:["routineID","dayKey","status","stepIDs","nameSnapshot","completedAt","stepNames","command"],
+        .record:["minuteOverride","routineID","dayKey","status","stepIDs","nameSnapshot","completedAt","stepNames","command"],
         .task:["title","note","dayKey","minute","completedAt"],
         .block:["title","dayKey","startMinute","endMinute","linkedID","linkedKind"]]
     static func validate(_ event: SyncEvent) throws {
@@ -21,10 +21,15 @@ enum SyncValidation {
                 guard common.contains(key) || fields[op.kind]!.contains(key), value.utf8.count <= 1_000_000 else { throw SyncError.invalid("지원하지 않는 필드: \(key)") }
                 if ["routineID","groupID","linkedID"].contains(key), !value.isEmpty, UUID(uuidString:value) == nil { throw SyncError.invalid("잘못된 연결 ID입니다.") }
                 if key == "dayKey", !value.isEmpty, RoutineRules.date(for:value) == nil { throw SyncError.invalid("날짜 형식을 확인해 주세요.") }
-                if ["minute","startMinute","endMinute"].contains(key), !value.isEmpty { guard let n = Int(value), (0..<1440).contains(n) else { throw SyncError.invalid("시간 범위를 확인해 주세요.") } }
+                if ["minute","minuteOverride","startMinute","endMinute"].contains(key), !value.isEmpty { guard let n = Int(value), (0..<1440).contains(n) else { throw SyncError.invalid("시간 범위를 확인해 주세요.") } }
+                if key == "durationMinutes", !value.isEmpty { guard let n = Int(value), (1...1440).contains(n) else { throw SyncError.invalid("소요시간은 1~1440분으로 입력해 주세요.") } }
                 if key == "sortOrder" { guard let n = Int(value), abs(Double(n)) < 1e9 else { throw SyncError.invalid("순서 범위를 확인해 주세요.") } }
                 if key == "weeklyTarget" { guard let n = Int(value), (1...7).contains(n) else { throw SyncError.invalid("주간 목표를 확인해 주세요.") } }
                 if key == "repeatRaw", RepeatKind(rawValue:value) == nil { throw SyncError.invalid("반복 형식 오류") }
+                if key == "calendarLink", !value.isEmpty {
+                    guard let link = try? JSONDecoder().decode(CalendarRoutineLink.self, from: Data(value.utf8)), link.version == 1,
+                          !link.localItemID.isEmpty, !link.calendarID.isEmpty else { throw SyncError.invalid("캘린더 루틴 연결 정보 오류") }
+                }
                 if key == "statusRaw", RoutineStatus(rawValue:value) == nil { throw SyncError.invalid("루틴 상태 오류") }
                 if ["status","command"].contains(key), DayStatus(rawValue:value) == nil { throw SyncError.invalid("완료 상태 오류") }
                 if key == "weekdays", value.split(separator:",").contains(where:{ Int($0).map { !(1...7).contains($0) } ?? true }) { throw SyncError.invalid("요일 오류") }

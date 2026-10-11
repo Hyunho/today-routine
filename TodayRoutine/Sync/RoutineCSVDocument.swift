@@ -18,7 +18,21 @@ struct RoutineCSVDocument: Codable, Equatable {
         if applicable == nil && state.objects["step/"+stepID] == nil { return nil }
         return record?.fields["step/"+stepID] == "true"
     }
+    static func makeAll(spaceID: UUID, state: SyncState, today: Date) throws -> [RoutineCSVDocument] {
+        try Task.checkCancellation()
+        let revision = SyncCoding.hash(try SyncCoding.encode(state) + Data(RoutineRules.dayKey(today).utf8))
+        return try state.objects.values.filter { $0.kind == .routine }.sorted { $0.id < $1.id }.map { routine in
+            try Task.checkCancellation()
+            guard let id = UUID(uuidString: routine.id) else { throw SyncError.invalid("CSV 루틴 ID가 잘못되었습니다.") }
+            return try make(routineID: id, spaceID: spaceID, state: state, today: today, revision: revision)
+        }
+    }
     static func make(routineID: UUID, spaceID: UUID, state: SyncState, today: Date) throws -> RoutineCSVDocument {
+        try Task.checkCancellation()
+        let revision = SyncCoding.hash(try SyncCoding.encode(state) + Data(RoutineRules.dayKey(today).utf8))
+        return try make(routineID: routineID, spaceID: spaceID, state: state, today: today, revision: revision)
+    }
+    private static func make(routineID: UUID, spaceID: UUID, state: SyncState, today: Date, revision: String) throws -> RoutineCSVDocument {
         guard let routine = state.objects["routine/"+routineID.uuidString] else { throw SyncError.invalid("CSV 루틴을 찾을 수 없습니다.") }
         let records = state.objects.values.filter { $0.kind == .record && $0.fields["routineID"] == routineID.uuidString }
         let steps = state.objects.values.filter { $0.kind == .step && $0.fields["routineID"] == routineID.uuidString }.sorted { (Int($0.fields["sortOrder"] ?? "") ?? 0,$0.id) < (Int($1.fields["sortOrder"] ?? "") ?? 0,$1.id) }
@@ -37,7 +51,6 @@ struct RoutineCSVDocument: Codable, Equatable {
             columns.append(CSVColumn(title:title,stepID:"_complete"))
         }
         let dates = Set(records.compactMap { $0.fields["dayKey"] }).union([RoutineRules.dayKey(today)]).sorted()
-        let revision = SyncCoding.hash(try SyncCoding.encode(state)+Data(RoutineRules.dayKey(today).utf8))
         return RoutineCSVDocument(spaceID:spaceID,documentID:SyncCoding.stableID(spaceID.uuidString+routineID.uuidString+revision),revisionID:revision,routineID:routineID,name:routine.fields["name"] ?? "루틴",columns:columns,state:state,dates:dates,createdAt:Date(timeIntervalSince1970:0))
     }
 }

@@ -41,6 +41,36 @@ final class InboxFeedTests: XCTestCase {
     func testTextDecoderDoesNotExecuteMarkup() {
         XCTAssertEqual(FeedParser.plainText("<style>secret</style><p>A&nbsp;&#x1F600; &#65;</p><!--hide--><p>B<br>C</p>"), "A 😀 A\nB\nC")
     }
+    func testPrefixedAtomAndContentNamespace() throws {
+        let feed = try parse("<a:feed xmlns:a='http://www.w3.org/2005/Atom'><a:title>Prefix</a:title><a:entry><a:id>p</a:id><a:title>Post</a:title><a:content>Text</a:content></a:entry></a:feed>")
+        XCTAssertEqual(feed.title, "Prefix"); XCTAssertEqual(feed.entries.first?.body, "Text")
+        let rss = try parse("<rss xmlns:c='http://purl.org/rss/1.0/modules/content/'><channel><item><title>Post</title><description>Short</description><c:encoded>Full text</c:encoded></item></channel></rss>")
+        XCTAssertEqual(rss.entries.first?.body, "Full text")
+    }
+    func testMissingLinksDoNotCollapseDifferentArticles() throws {
+        let feed = try parse("<rss><channel><item><title>First</title></item><item><title>Second</title></item></channel></rss>")
+        XCTAssertEqual(feed.entries.count, 2)
+        XCTAssertNil(feed.entries.first?.link)
+        XCTAssertNotEqual(feed.entries.first?.identity, feed.entries.last?.identity)
+    }
+    func testRejectsInsecureRedirect() {
+        let download = FeedDownload()
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let origin = URL(string: "https://example.com/feed")!
+        let task = session.dataTask(with: origin)
+        let response = HTTPURLResponse(url: origin, statusCode: 302, httpVersion: nil, headerFields: nil)!
+        var result: URLRequest? = URLRequest(url: origin)
+        download.urlSession(session, task: task, willPerformHTTPRedirection: response, newRequest: URLRequest(url: URL(string: "http://example.com/feed")!)) { result = $0 }
+        XCTAssertNil(result)
+    }
+    func testDownloadCancellation() async {
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [InboxURLProtocol.self]
+        let client = FeedClient(configuration: config)
+        let task = Task { try await client.fetch(URL(string: "https://example.com/slow")!) }
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Cancelled download must throw") } catch {}
+    }
     func testDownloaderErrorsAndOversize() async throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [InboxURLProtocol.self]
@@ -59,6 +89,7 @@ final class InboxURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let route = request.url!.lastPathComponent
+        if route == "slow" { return }
         if route == "timeout" { client?.urlProtocol(self, didFailWithError: URLError(.timedOut)); return }
         let response = HTTPURLResponse(url: request.url!, statusCode: route == "status" ? 500 : 200, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

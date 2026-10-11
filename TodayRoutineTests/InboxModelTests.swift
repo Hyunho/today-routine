@@ -11,7 +11,7 @@ actor InboxFakeFeed: FeedFetching {
         started = true
         if suspended { await withCheckedContinuation { continuation = $0 } }
         if failure || url.host == "fail.test" { throw URLError(.cannotConnectToHost) }
-        return ParsedFeed(title: "Feed", entries: [ParsedFeedEntry(identity: "one", title: "Entry", body: "Body", link: URL(string:"https://example.com/post"), publishedAt: nil)])
+        return ParsedFeed(title: "Feed", entries: [ParsedFeedEntry(identity: "one", title: "Entry", body: "Body", link: URL(string:"https://example.com/post"), publishedAt: nil, richBody: "# Body\n\n**Text**", bodyFormat: "markdown")])
     }
 }
 @MainActor final class InboxModelTests: XCTestCase {
@@ -29,6 +29,8 @@ actor InboxFakeFeed: FeedFetching {
         XCTAssertEqual(model.state.items[0].date, item.date)
         XCTAssertTrue(model.state.items[0].isSaved); XCTAssertTrue(model.state.items[0].isRead)
         XCTAssertEqual(model.state.positions["all/all"], item.id)
+        XCTAssertEqual(model.state.items[0].richBody, "# Body\n\n**Text**")
+        XCTAssertEqual(model.state.items[0].bodyFormat, "markdown")
     }
     func testFailureDoesNotEraseOtherFeedsAndCanRetry() async throws {
         let client = InboxFakeFeed(), model = try make(client)

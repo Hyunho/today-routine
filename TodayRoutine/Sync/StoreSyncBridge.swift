@@ -10,6 +10,8 @@ import SwiftData
             f["repeatRaw"] = r.repeatRaw
             f["weekdays"] = r.weekdays.map(String.init).joined(separator:",")
             f["weeklyTarget"] = String(r.weeklyTarget)
+            if let link = r.calendarLinkJSON { f["calendarLink"] = link }
+            f["durationMinutes"] = r.durationMinutes.map(String.init) ?? ""
             f["minute"] = r.minute.map(String.init) ?? ""
             f["groupID"] = r.groupID?.uuidString ?? ""
             f["sortOrder"] = String(r.sortOrder)
@@ -62,6 +64,7 @@ import SwiftData
             let ids = Set(s.steps.filter { $0.routineID == r.routineID }.map { $0.id.uuidString }).union(r.completedStepIDs.map(\.uuidString))
             let names = Dictionary(uniqueKeysWithValues:s.steps.filter { $0.routineID == r.routineID }.map { ($0.id.uuidString,$0.name) })
             var f = ["routineID":r.routineID.uuidString,"dayKey":r.dayKey,"status":r.statusRaw,"stepIDs":ids.sorted().joined(separator:","),"nameSnapshot":r.nameSnapshot,"completedAt":r.completedAt.map { String($0.timeIntervalSince1970) } ?? "","createdAt":String(r.createdAt.timeIntervalSince1970),"updatedAt":String(r.updatedAt.timeIntervalSince1970),"stepNames":String(data:try SyncCoding.encode(names),encoding:.utf8)!]
+            f["minuteOverride"] = r.minuteOverride.map(String.init) ?? ""
             for id in ids { f["step/"+id] = r.completedStepIDs.contains(where:{$0.uuidString == id}) ? "true":"false" }
             let o = SyncObject(kind:.record,id:r.key,fields:f); result[o.key] = o
         }
@@ -69,8 +72,10 @@ import SwiftData
     }
     static func apply(_ state: SyncState, store: RoutineStore) throws {
         let s = try store.loadSnapshot()
+        func routineDeleted(_ id: UUID) -> Bool { state.tombstones.contains("routine/" + id.uuidString) }
 
         for r in s.routines where state.tombstones.contains("routine/"+r.id.uuidString) { store.context.delete(r) }
+        for reminder in s.reminders where routineDeleted(reminder.routineID) { store.context.delete(reminder) }
         for o in state.objects.values where o.kind == .routine {
             guard let id = UUID(uuidString:o.id) else { continue }; let f = o.fields
             let r = s.routines.first { $0.id == id } ?? Routine(id: id, name: f["name"] ?? "")
@@ -80,6 +85,8 @@ import SwiftData
             if f["repeatRaw"] != nil { r.repeatRaw = f["repeatRaw"] ?? "" }
             if f["weekdays"] != nil { r.weekdays = (f["weekdays"] ?? "").split(separator:",").compactMap { Int($0) } }
             if f["weeklyTarget"] != nil { r.weeklyTarget = Int(f["weeklyTarget"] ?? "") ?? 0 }
+            if let link = f["calendarLink"] { r.calendarLinkJSON = link.isEmpty ? nil : link }
+            if let duration = f["durationMinutes"] { r.durationMinutes = Int(duration) }
             if f["minute"] != nil { r.minute = Int(f["minute"] ?? "") }
             if f["groupID"] != nil { r.groupID = UUID(uuidString:f["groupID"] ?? "") }
             if f["sortOrder"] != nil { r.sortOrder = Int(f["sortOrder"] ?? "") ?? 0 }
@@ -88,9 +95,10 @@ import SwiftData
             if f["updatedAt"] != nil { r.updatedAt = Date(timeIntervalSince1970:Double(f["updatedAt"] ?? "") ?? 0) }
             if let groupID = r.groupID, state.tombstones.contains("group/"+groupID.uuidString) { r.groupID = nil }
         }
-        for r in s.steps where state.tombstones.contains("step/"+r.id.uuidString) { store.context.delete(r) }
+        for r in s.steps where state.tombstones.contains("step/"+r.id.uuidString) || routineDeleted(r.routineID) { store.context.delete(r) }
         for o in state.objects.values where o.kind == .step {
             guard let id = UUID(uuidString:o.id) else { continue }; let f = o.fields
+            if let routineID = f["routineID"].flatMap(UUID.init(uuidString:)), routineDeleted(routineID) { continue }
             let r = s.steps.first { $0.id == id } ?? RoutineStep(id: id, routineID: UUID(uuidString: f["routineID"] ?? "") ?? id, name: f["name"] ?? "")
             if r.modelContext == nil { r.id = id; store.context.insert(r) }
             if f["routineID"] != nil { r.routineID = UUID(uuidString:f["routineID"] ?? "") ?? id }
@@ -138,11 +146,14 @@ import SwiftData
             guard r.endMinute > r.startMinute else { throw SyncError.invalid("동기화된 블록 시간이 올바르지 않습니다.") }
             if let linked = r.linkedID, state.tombstones.contains((r.linkedKind ?? "")+"/"+linked.uuidString) { r.linkedID = nil; r.linkedKind = nil }
         }
+        for r in s.records where state.tombstones.contains("record/" + r.key) || routineDeleted(r.routineID) { store.context.delete(r) }
         for o in state.objects.values where o.kind == .record {
             let parts = o.id.split(separator:"/"); guard parts.count == 2, let id = UUID(uuidString:String(parts[0])) else { continue }
+            guard !routineDeleted(id) else { continue }
             let f = o.fields, key = String(parts[1])
             let r = s.records.first { $0.key == o.id } ?? RoutineDayRecord(routineID:id,dayKey:key,name:f["nameSnapshot"] ?? "")
             if r.modelContext == nil { store.context.insert(r) }
+            if let minute = f["minuteOverride"] { r.minuteOverride = Int(minute) }
             r.statusRaw = f["status"] ?? "pending"; r.nameSnapshot = f["nameSnapshot"] ?? r.nameSnapshot
             r.completedStepIDs = f.filter { $0.key.hasPrefix("step/") && $0.value == "true" }.compactMap { UUID(uuidString:String($0.key.dropFirst(5))) }
             r.completedAt = Double(f["completedAt"] ?? "").map { Date(timeIntervalSince1970:$0) }

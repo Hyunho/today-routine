@@ -1,4 +1,5 @@
 import SwiftUI
+import EventKit
 struct RoutinesView: View {
     let model: AppModel
     @State private var mode = "내 순서"
@@ -6,40 +7,64 @@ struct RoutinesView: View {
     @State private var draft: RoutineDraft?
     @State private var groups = false
     @State private var settings = false
-    var routines: [Routine] { model.snapshot.routines.filter { $0.status == selectedStatus }.sorted { $0.sortOrder < $1.sortOrder } }
+    @State private var recurringEvents: [AppleCalendarEvent] = []
+    @State private var loadingRecurring = false
+    @State private var calendarRevision = 0
+    @Environment(\.scenePhase) private var scenePhase
+    private var recurringQueryKey: String {
+        "\(model.selectedTab)-\(model.appleCalendar.selectedIDs.sorted())-\(calendarRevision)-\(model.revision)"
+    }
+    var routines: [Routine] { model.snapshot.routines.filter { $0.status == selectedStatus && $0.calendarLink == nil }.sorted { $0.sortOrder < $1.sortOrder } }
     var body: some View {
-        NavigationStack {
-            List {
-                Section { Picker("보기", selection: $mode) { ForEach(["내 순서","그룹별","시간순"], id: \.self) { Text($0) } }.pickerStyle(.segmented)
-                    Picker("상태", selection: $selectedStatus) { ForEach(RoutineStatus.allCases, id: \.self) { Text($0.label).tag($0) } }
+        List {
+            Section {
+                NavigationLink { HistoryView(model: model) } label: {
+                    Label("주간 기록", systemImage: "chart.bar")
                 }
-                if routines.isEmpty { EmptyHint(title: "나만의 리듬을 만들어 보세요", message: "작은 루틴 하나부터 시작해요.", symbol: "leaf") }
-                if mode == "그룹별" {
-                    ForEach(model.snapshot.groups.sorted { $0.sortOrder < $1.sortOrder }) { group in
-                        let items = routines.filter { $0.groupID == group.id }
-                        if !items.isEmpty { Section(group.name) { ForEach(RoutineRules.timeSorted(items)) { row($0) } } }
-                    }
-                    let others = routines.filter { r in r.groupID == nil || !model.snapshot.groups.contains(where: { $0.id == r.groupID }) }
-                    Section("그룹 없음") { ForEach(RoutineRules.timeSorted(others)) { row($0) } }
-                } else {
-                    Section { ForEach(mode == "시간순" ? RoutineRules.timeSorted(routines) : routines) { row($0) }.onMove { indices, destination in
-                        var ids = routines.map(\.id); ids.move(fromOffsets: indices, toOffset: destination)
-                        // Reorder this section while preserving the other statuses after it.
-                        ids += model.snapshot.routines.filter { $0.status != selectedStatus }.sorted { $0.sortOrder < $1.sortOrder }.map(\.id)
-                        model.perform { try $0.reorder(ids) }
-                    }.moveDisabled(mode != "내 순서") }
+            }
+            Section { Picker("보기", selection: $mode) { ForEach(["내 순서","그룹별","시간순"], id: \.self) { Text($0) } }.pickerStyle(.segmented)
+                Picker("상태", selection: $selectedStatus) { ForEach(RoutineStatus.allCases, id: \.self) { Text($0.label).tag($0) } }
+            }
+            if model.snapshot.routines.filter({ $0.status == selectedStatus }).isEmpty { EmptyHint(title: "나만의 리듬을 만들어 보세요", message: "작은 루틴 하나부터 시작해요.", symbol: "leaf") }
+            if mode == "그룹별" {
+                ForEach(model.snapshot.groups.sorted { $0.sortOrder < $1.sortOrder }) { group in
+                    let items = routines.filter { $0.groupID == group.id }
+                    if !items.isEmpty { Section(group.name) { ForEach(RoutineRules.timeSorted(items)) { row($0) } } }
                 }
-            }.navigationTitle("나의 루틴")
-            .toolbar { ToolbarItem(placement: .navigation) { Menu { Button("그룹 관리") { groups = true }; Button("설정") { settings = true } } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("루틴 메뉴") }; ToolbarItemGroup(placement: .primaryAction) { if mode == "내 순서" { PlatformEditButton() }; Button { draft = RoutineDraft() } label: { Image(systemName: "plus") }.accessibilityLabel("루틴 추가") } }
-            .sheet(item: $draft) { RoutineEditor(model: model, draft: $0) }
-            .sheet(isPresented: $groups) { GroupEditor(model: model) }
-            .sheet(isPresented: $settings) { SettingsView(model: model) }
+                let others = routines.filter { r in r.groupID == nil || !model.snapshot.groups.contains(where: { $0.id == r.groupID }) }
+                Section("그룹 없음") { ForEach(RoutineRules.timeSorted(others)) { row($0) } }
+            } else {
+                Section { ForEach(mode == "시간순" ? RoutineRules.timeSorted(routines) : routines) { row($0) }.onMove { indices, destination in
+                    var ids = routines.map(\.id); ids.move(fromOffsets: indices, toOffset: destination)
+                    // Reorder this section while preserving the other statuses after it.
+                    ids += model.snapshot.routines.filter { $0.status != selectedStatus }.sorted { $0.sortOrder < $1.sortOrder }.map(\.id)
+                    model.perform { try $0.reorder(ids) }
+                }.moveDisabled(mode != "내 순서") }
+            }
+            CalendarRoutineSections(model: model, events: recurringEvents, loading: loadingRecurring, status: selectedStatus) { draft = RoutineDraft($0, steps: model.snapshot.steps) }
+        }.navigationTitle("나의 루틴")
+        .toolbar { ToolbarItem(placement: .navigation) { Menu { Button("그룹 관리") { groups = true }; Button("설정") { settings = true } } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("루틴 메뉴") }; ToolbarItemGroup(placement: .primaryAction) { if mode == "내 순서" { PlatformEditButton() }; Button { draft = RoutineDraft() } label: { Image(systemName: "plus") }.accessibilityLabel("루틴 추가") } }
+        .sheet(item: $draft) { RoutineEditor(model: model, draft: $0) }
+        .sheet(isPresented: $groups) { GroupEditor(model: model) }
+        .sheet(isPresented: $settings) { SettingsView(model: model) }
+        .task(id: recurringQueryKey) {
+            guard model.selectedTab == "전체" else { return }
+            loadingRecurring = true
+            recurringEvents = []
+            await model.appleCalendar.refresh()
+            await model.appleCalendar.refreshConnections(model.snapshot.routines)
+            let events = await model.appleCalendar.recurringEvents(from: Date())
+            guard !Task.isCancelled else { return }
+            recurringEvents = events
+            loadingRecurring = false
         }
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in calendarRevision += 1 }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { calendarRevision += 1 } }
     }
     func row(_ r: Routine) -> some View {
         Button { draft = RoutineDraft(r, steps: model.snapshot.steps) } label: {
             HStack(alignment: .top) { Image(systemName: r.status == .active ? "circle.dotted" : "archivebox").foregroundStyle(.teal).font(.title2)
-                VStack(alignment: .leading, spacing: 6) { Text(r.name).font(.headline).foregroundStyle(.primary); Text("\(r.repeatKind == .weeklyGoal ? "주 \(r.weeklyTarget)회" : r.repeatKind.label) · \(RoutineRules.timeLabel(r.minute))").font(.caption).foregroundStyle(.secondary); if !model.steps(for: r).isEmpty { Text("\(model.steps(for: r).count)단계").font(.caption).foregroundStyle(.secondary) } }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
+                VStack(alignment: .leading, spacing: 6) { Text(r.name).font(.headline).foregroundStyle(.primary); Text("\(r.repeatKind == .weeklyGoal ? "주 \(r.weeklyTarget)회" : r.repeatKind.label) · \(RoutineRules.timeLabel(r.minute)) · 소요시간 \(RoutineRules.durationLabel(r.durationMinutes))").font(.caption).foregroundStyle(.secondary); if !model.steps(for: r).isEmpty { Text("\(model.steps(for: r).count)단계").font(.caption).foregroundStyle(.secondary) } }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
             .padding(.vertical, 5)
         }.buttonStyle(.plain)
         .contextMenu {

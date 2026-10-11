@@ -10,12 +10,16 @@ import SwiftData
     func enable(spaceID: UUID, deviceID: UUID) throws {
         if let config = try configuration() {
             guard config.spaceID == spaceID else { throw SyncError.invalid("다른 동기화 공간에 연결할 수 없습니다. 기존 공간을 선택해 주세요.") }
+            try store.removeLegacyTasks()
             config.enabled = true; try store.save(); return
         }
         store.syncApplying = true; defer { store.syncApplying = false }
         try store.transaction {
+            let before = try StoreSyncBridge.objects(store.loadSnapshot())
             store.context.insert(SyncDeviceState(spaceID:spaceID,deviceID:deviceID))
+            try store.removeLegacyTaskRecords()
             try capture(before:[:])
+            try captureLegacyTaskRemoval(before: before)
         }
     }
     func disconnect() throws { if let config = try configuration() { config.enabled = false; try store.save() } }
@@ -35,11 +39,12 @@ import SwiftData
         var ops: [SyncOperation] = []
         for object in after.values.sorted(by:{$0.key < $1.key}) {
             let old = before[object.key]
-            if object.kind == .record, let old, old.fields["updatedAt"] == object.fields["updatedAt"], store.syncDayCommand?.0 != object.id { continue }
+            if object.kind == .record, let old, old.fields["updatedAt"] == object.fields["updatedAt"], store.syncDayCommand?.0 != object.id, store.syncDayCommands[object.id] == nil { continue }
             var values = object.fields.filter { old?.fields[$0.key] != $0.value }
             if object.kind == .record {
                 if old == nil { values = values.filter { !($0.key.hasPrefix("step/") && $0.value == "false") } }
-                if let command = store.syncDayCommand, command.0 == object.id { values["command"] = command.1.rawValue }
+                if let command = store.syncDayCommands[object.id] { values["command"] = command.rawValue }
+                else if let command = store.syncDayCommand, command.0 == object.id { values["command"] = command.1.rawValue }
                 else if values.keys.contains(where:{$0.hasPrefix("step/")}) { values.removeValue(forKey:"status") }
             }
             let groups: [[String]]
@@ -69,6 +74,9 @@ import SwiftData
             var inserted = known
             for event in incoming where !inserted.contains(event.id) { store.context.insert(try SyncJournalEntry(event:event,published:true)); inserted.insert(event.id) }
             try StoreSyncBridge.apply(state,store:store)
+            let before = try StoreSyncBridge.objects(store.loadSnapshot())
+            try store.removeLegacyTaskRecords()
+            try captureLegacyTaskRemoval(before: before)
         }
     }
     func appendLocal(_ event: SyncEvent) throws {
@@ -76,7 +84,13 @@ import SwiftData
         let existing = try events(); let state = try SyncReducer.reduce(existing+[event])
         if existing.contains(where:{$0.id == event.id}) { return }
         store.syncApplying = true; defer { store.syncApplying = false }
-        try store.transaction { store.context.insert(try SyncJournalEntry(event:event)); try StoreSyncBridge.apply(state,store:store) }
+        try store.transaction {
+            store.context.insert(try SyncJournalEntry(event:event))
+            try StoreSyncBridge.apply(state,store:store)
+            let before = try StoreSyncBridge.objects(store.loadSnapshot())
+            try store.removeLegacyTaskRecords()
+            try captureLegacyTaskRemoval(before: before)
+        }
     }
     func pendingEvents() throws -> [SyncEvent] { try entries().filter { !$0.published }.map { try SyncCoding.decode(SyncEvent.self,from:$0.data) } }
     func markPublished(ids: [UUID]) throws {

@@ -27,8 +27,8 @@ import Observation
     init(client: (any NotificationClient)? = nil) { self.client = client ?? SystemNotificationClient() }
     func requestPermission() async throws -> Bool { try await client.requestPermission() }
     func waitUntilIdle() async { await tail?.value }
-    func enqueue(snapshot: StoreSnapshot) {
-        let requests = ReminderPlanner.requests(snapshot: snapshot, now: Date())
+    func enqueue(snapshot: StoreSnapshot, defaults: ReminderDefaults = ReminderDefaults()) {
+        let requests = ReminderPlanner.requests(snapshot: snapshot, now: Date(), defaults: defaults)
         let previous = tail
         tail = Task { [weak self] in
             await previous?.value

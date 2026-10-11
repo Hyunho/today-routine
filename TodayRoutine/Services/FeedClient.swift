@@ -13,7 +13,7 @@ struct FeedClient: FeedFetching, @unchecked Sendable {
         return try await Task.detached(priority: .utility) { try FeedParser.parse(data, baseURL: url) }.value
     }
 }
-private final class FeedDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+final class FeedDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Data, Error>?
     private var session: URLSession?
